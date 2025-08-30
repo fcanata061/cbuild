@@ -1,0 +1,228 @@
+=============================
+ CBUILD — Manual Completo
+=============================
+
+cbuild é uma ferramenta de build e empacotamento por receitas, escrita em C++17, que permite compilar, instalar, remover e manter pacotes em um sistema Linux a partir de fontes baixadas da internet.
+
+Este manual descreve a instalação, configuração, uso, comandos, estrutura de diretórios, modelo de receita e exemplos reais.
+
+-------------------------------------------------
+1. Instalação
+-------------------------------------------------
+
+1.1. Compilando o binário:
+
+    g++ -std=c++17 -O2 -pthread -o cbuild cbuild.cpp
+
+1.2. Instale o binário em /usr/local/bin (opcional):
+
+    sudo install -m755 cbuild /usr/local/bin/
+
+1.3. Dependências necessárias no sistema:
+    - curl
+    - git
+    - tar, xz, bzip2, gzip, unzip
+    - patch
+    - fakeroot
+    - sha256sum
+    - ldd
+    - make, gcc (para compilar pacotes)
+
+-------------------------------------------------
+2. Estrutura de diretórios
+-------------------------------------------------
+
+Por padrão, cbuild cria e utiliza a árvore em ~/.cbuild:
+
+    ~/.cbuild/
+        recipes/    -> receitas dos pacotes em formato INI
+        sources/    -> tarballs e repositórios clonados
+        work/       -> diretórios de compilação
+        destdir/    -> prefixo de instalação temporário
+        logs/       -> logs de compilação
+        repo/       -> repositório git das receitas (sync)
+        manifests/  -> registros de arquivos instalados por pacote
+
+-------------------------------------------------
+3. Configuração inicial
+-------------------------------------------------
+
+Para iniciar uma receita:
+
+    ./cbuild init hello
+
+Isso cria um diretório em ~/.cbuild/recipes/hello/recipe.ini
+
+Você pode editar a receita conforme modelo.
+
+-------------------------------------------------
+4. Comandos suportados
+-------------------------------------------------
+
+cbuild possui os seguintes subcomandos (todos com aliases/abreviações):
+
+  help, h        -> mostra ajuda
+  init           -> cria diretório de receita
+  fetch          -> baixa o source (curl/git)
+  extract        -> extrai o source para work/
+  patch          -> aplica patches (https/git/local)
+  build          -> executa etapas: prebuild, prepare, configure, build
+  install        -> instala em destdir e registra manifest
+  remove         -> remove arquivos listados no manifest
+  search         -> busca receitas
+  info           -> mostra informações sobre um pacote
+  sync           -> sincroniza receitas via git
+  revdep         -> verifica dependências de binários (ldd)
+  mkpkg          -> cria pacote + receita simultaneamente
+
+-------------------------------------------------
+5. Receita — modelo completo
+-------------------------------------------------
+
+Arquivo: ~/.cbuild/recipes/nome/recipe.ini
+
+[package]
+name=hello
+version=2.12
+url=https://ftp.gnu.org/gnu/hello/hello-2.12.tar.gz
+sha256=6a3b...
+patches=https://exemplo.com/patch1.diff;localfix.patch
+gitpatches=https://exemplo.com/fix.patch.git
+
+[options]
+strip=true
+
+[functions]
+prebuild=echo "Rodando prebuild"
+prepare=./bootstrap.sh
+configure=./configure --prefix=/usr
+build=make -j$(nproc)
+install=make DESTDIR=$DESTDIR install
+postinstall=echo "Instalação concluída"
+postremove=echo "Pacote removido com sucesso"
+
+-------------------------------------------------
+6. Receita real — GCC
+-------------------------------------------------
+
+[package]
+name=gcc
+version=13.2.0
+url=https://ftp.gnu.org/gnu/gcc/gcc-13.2.0/gcc-13.2.0.tar.xz
+sha256=5c6e...
+patches=
+
+[options]
+strip=true
+
+[functions]
+configure=./configure --prefix=/usr --disable-multilib
+build=make -j$(nproc)
+install=make DESTDIR=$DESTDIR install
+
+-------------------------------------------------
+7. Receita real — GLIBC
+-------------------------------------------------
+
+[package]
+name=glibc
+version=2.38
+url=https://ftp.gnu.org/gnu/libc/glibc-2.38.tar.xz
+sha256=1f6c...
+patches=
+
+[options]
+strip=false
+
+[functions]
+configure=mkdir build && cd build && ../configure --prefix=/usr
+build=cd build && make -j$(nproc)
+install=cd build && make DESTDIR=$DESTDIR install
+
+-------------------------------------------------
+8. Receita real — FIREFOX
+-------------------------------------------------
+
+[package]
+name=firefox
+version=117.0
+url=https://ftp.mozilla.org/pub/firefox/releases/117.0/source/firefox-117.0.source.tar.xz
+sha256=4f1e...
+patches=
+
+[options]
+strip=false
+
+[functions]
+prepare=./mach bootstrap
+configure=./mach configure
+build=./mach build
+install=./mach install --destdir=$DESTDIR
+
+-------------------------------------------------
+9. Fluxo de uso típico
+-------------------------------------------------
+
+Exemplo com hello:
+
+    ./cbuild fetch hello
+    ./cbuild extract hello
+    ./cbuild patch hello
+    ./cbuild build hello
+    ./cbuild install hello
+
+Para remover:
+
+    ./cbuild remove hello
+
+-------------------------------------------------
+10. Logs e Manifest
+-------------------------------------------------
+
+- Logs ficam em ~/.cbuild/logs/nome.log
+- Arquivos instalados são listados em ~/.cbuild/manifests/nome.txt
+
+-------------------------------------------------
+11. Sincronização de receitas
+-------------------------------------------------
+
+Para manter suas receitas em um repositório git:
+
+    ./cbuild sync
+
+Isso sincroniza ~/.cbuild/recipes com o repositório configurado.
+
+-------------------------------------------------
+12. Dependências reversas
+-------------------------------------------------
+
+Para verificar dependências de binários de um pacote:
+
+    ./cbuild revdep hello
+
+-------------------------------------------------
+FIM
+
+------------------------------------------------------
+
+Exemplo de receita
+----‐--------------------------------------------
+[package]
+name=hello
+version=2.12
+url=https://ftp.gnu.org/gnu/hello/hello-2.12.tar.gz,https://exemplo.com/addon.tar.xz
+sha256=aaaaaaaaaaaaaaaa...,bbbbbbbbbbbbbbbb...
+vcs=
+patches=patches/,https://example.com/fix-crash.patch,git:https://github.com/foo/bar.git@abc123,git:https://github.com/foo/bar.git@v1.0..v1.2
+strip=true
+submodules=false
+postremove=/usr/bin/update-desktop-database
+
+[options]
+prebuild=
+prepare=autoreconf -fi
+configure=./configure --prefix=/usr
+build=make -j$(nproc)
+install=make install
+postinstall=
+-------------------------------------
